@@ -301,6 +301,24 @@ and write the options to the stream when profiling starts.
  * motherboard and OS. Comment this out to use the old clock.
  */
 #  define HAS_QPC
+
+#  ifndef U64_CONST
+#    ifdef _MSC_VER
+#      define U64_CONST(x) x##UI64
+#    else
+#      define U64_CONST(x) x##ULL
+#    endif
+#  endif
+
+/* workaround for "error C2520: conversion from unsigned __int64 to double not i
+mplemented, use signed __int64" */
+#  if defined(_MSC_VER) && _MSC_VER < 1300 /* < VC 7/2003*/
+#    define NYTPIuint642NV(x) ((NV)(I64)((x) & U64_CONST(0x7FFFFFFFFFFFFFFF)) + -(NV)(I64)((x) & U64_CONST(0x8000000000000000)))
+#  endif
+#endif /* WIN32 */
+
+#ifndef NYTPIuint642NV
+#  define NYTPIuint642NV(x)  ((NV)(x))
 #endif
 
 #ifdef HAS_CLOCK_GETTIME
@@ -340,7 +358,7 @@ typedef uint64_t time_of_day_t;
 
 #ifdef HAS_QPC
 
-unsigned __int64 time_frequency = 0ui64;
+unsigned __int64 time_frequency = U64_CONST(0);
 typedef unsigned __int64 time_of_day_t;
 #  define TICKS_PER_SEC time_frequency
 #  define get_time_of_day(into) QueryPerformanceCounter((LARGE_INTEGER*)&into)
