@@ -354,7 +354,9 @@ typedef uint64_t time_of_day_t;
 #    endif
 #  endif
 
-unsigned __int64 time_frequency = U64_CONST(0);
+/* default val is for Vista/NT 6 and newer, if OS ver under, it is changed later*/
+static NV timeofdayres = 0.001;
+static unsigned __int64 time_frequency = U64_CONST(0);
 typedef unsigned __int64 time_of_day_t;
 #  define TICKS_PER_SEC time_frequency
 #  define get_time_of_day(into) QueryPerformanceCounter((LARGE_INTEGER*)&into)
@@ -5030,18 +5032,15 @@ load_profile_to_hv(pTHX_ NYTP_file in)
         int show_summary_stats = (trace_level >= 1);
 
         if (state.profiler_end_time
+#ifndef HAS_QPC
             && state.total_stmts_duration > state.profiler_duration * 1.1
-/* GetSystemTimeAsFiletime/gettimeofday_nv on Win32 have 15.625 ms resolution
-   by default. 1 ms best case scenario if you use special options which Perl
-   land doesn't use, and MS strongly discourages in
-   "Timers, Timer Resolution, and Development of Efficient Code". So for short
-   programs profiler_duration winds up being 0. If necessery, in the future
-   profiler_duration could be set to 15.625 ms automatically on NYTProf start
-   because of the argument that a process can not execute in 0 ms according to
-   the laws of space and time, or at "the end" if profiler_duration is 0.0, set
-   it to 15.625 ms*/
-#ifdef HAS_QPC
-            && state.profiler_duration != 0.0
+#else
+/* GetSystemTimeAsFiletime/gettimeofday_nv on Win32 have 15.625 (<= XP/2003)
+   or 1 ms (>= Vista) resolution by default. So for short programs
+   profiler_duration winds up being 0 (clock wasn't updated yet by NT kernel in
+   KeUpdateSystemTime between gettimeofday calls) or total_stmts_duration is
+   more than 110% (for example, 29 ms total_stmts_duration, 15.625 ms GTOD). */
+            && state.total_stmts_duration > (state.profiler_duration * 1.1) + timeofdayres
 #endif
             ) {
             logwarn("The sum of the statement timings is %.1"NVff"%% of the total time profiling."
@@ -5234,6 +5233,12 @@ BOOT:
         newCONSTSUB(stash, (char *) constant->name, newSViv(constant->value));
     } while (++constant < end);
     newCONSTSUB(stash, "NYTP_ZLIB_VERSION",     newSVpv(ZLIB_VERSION, 0));
+#ifdef HAS_QPC
+    /* extract dwMajorVersion */
+    if((DWORD)(LOBYTE(LOWORD(GetVersion()))) < 6)
+        timeofdayres = 0.015625; /* Win XP/2003 and older's resolution */
+    /* else Vista/NT 6 and newer, which is 0.001, value is at declaration */
+#endif
 }
 
 
